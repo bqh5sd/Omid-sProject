@@ -1,0 +1,369 @@
+#################################### Regression Module Information###################################
+#takes an input of an amino acid data set, must be a TXT file (two inputs in dataset: amino acid sequence and expected output)
+
+#Returns General Statistics About Four Regression techniques:
+    #Linear Regression
+    #Gaussian Regression
+    #Decision Tree
+    #Random Forest Regression
+#Optimizes models using GridSearchCV function (sklearn module)
+#focuses on R2, MSE, MAE, and R Pearson Correlation Coefficient values as outputs (to compare to other models)
+#Current run time: ~30 minutes for a 3400 row data set
+####################################################################################################
+
+from sklearn.linear_model import LinearRegression
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.ensemble import RandomForestRegressor
+
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
+from sklearn.metrics import r2_score
+from sklearn.metrics import mean_absolute_error
+from sklearn.model_selection import GridSearchCV
+from sklearn.gaussian_process.kernels import RBF
+
+import pandas as pd
+import numpy as np
+import time
+import datetime
+import matplotlib.pyplot as plt
+
+# Step 1: Define a list of unique amino acids
+unique_amino_acids = ['A', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'K', 'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'V', 'W', 'Y', '1', '2', '3', '4']
+
+# Step 2: Create a dictionary to map amino acids to indices
+amino_acid_to_index = {amino_acid: index for index, amino_acid in enumerate(unique_amino_acids)}
+
+# Step 3: Convert amino acids to one-hot vectors
+def one_hot_encode(amino_acid_sequence):
+    """
+    Parameters
+    ----------
+    amino_acid_sequence : This function takes one amino acid sequence input at time and returns the 
+    compatible one_hot_encoded sequence
+
+    Returns
+    -------
+    merged_one_hot_encoded_sequence : this function returns not a list of separate one_hot_encoded lists,
+    but a merged list with a completely one_hot_encoded amino acid sequence
+
+    """
+    one_hot_encoded_sequence = []
+    for amino_acid in amino_acid_sequence:
+        # Create a binary vector with all zeros
+        one_hot_vector = [0] * len(unique_amino_acids)
+        
+        # Set the corresponding index to 1mod.
+        one_hot_vector[amino_acid_to_index[amino_acid]] = 1
+        
+        # Append the one-hot vector to the final sequence
+        one_hot_encoded_sequence.append(one_hot_vector)
+        merged_one_hot_encoded_sequence = [item for sublist in one_hot_encoded_sequence for item in sublist]
+    return merged_one_hot_encoded_sequence
+
+#Convert the dataset from a txt to a csv file
+def txt_to_csv(input_file, output_file):
+    """
+    Parameters
+    ----------
+    input_file : input a txt file (name)
+    output_file : input the name of the output file (likely the txt file's name  + "csv" instead of "txt")
+
+    Returns
+    -------
+    output_file : returns the txt file as a csv so the program can process it
+
+    """
+    # Read the TXT file using pandas.
+    df = pd.read_csv(input_file, sep='\t')  # You may need to adjust the separator ('\t' or ' ') based on your TXT file.
+    # Save the DataFrame as a CSV file.
+    df.to_csv(output_file, index=False)
+    return output_file
+
+#########################################################################
+
+def main():
+    """
+    Calls all four regression models, calls the calculate_stats function to return the r2, mse, mae,
+    and r pearson values, prints a final dataframe with a compatilation of stats from all four 
+    models, prints the times when the program begins and ends.
+
+    Returns
+    -------
+    None.
+
+    """
+    #Get user input to direct the program
+    data_set = input("Input the name of the txt file you would like to use: ")    
+    column_name = input("Input the name of the column with the amino acid sequences as it appears in the spreadsheet: ")
+    last_column = input("Input the name of the column with the final/expected data values as it appears in the spreadsheet: ")
+    
+    #convert the input txt file to a csv file
+    output_file = data_set.replace("txt", "csv")
+    txt_to_csv(data_set, output_file)
+    data = pd.read_csv(output_file, sep=",")
+    
+    #separates the columns to prepare the amino acids to be translated to one_hot_encoded sequences
+    X = data.drop(last_column, axis = 1)
+    y = data[last_column]
+    
+    #empty list to collect all of the one_hot_encoded sequences
+    data = []
+    for value in X[column_name]:
+        #loop through all of the amino acid sequences in the dataframe column
+        amino_acid_sequence = value
+        one_hot_encoded_sequence = one_hot_encode(amino_acid_sequence)
+        #add the one_hot_encoded list to the data list
+        data.append(one_hot_encoded_sequence)
+    
+    # Convert sublists to strings and create a DataFrame
+    df = pd.DataFrame(data)
+    # Replace NaN values with a unique category (e.g., 'Missing')
+    df.fillna('0', inplace=True)
+    
+    #separate the two columns and use for rest of program
+    X_data = df
+    y_data = y
+
+    current_time = datetime.datetime.now()
+    formatted_time = current_time.strftime("%Y-%m-%d %H:%M:%S")
+    print(f"This program was started at {formatted_time}")
+    
+    #Call all four regression models and gather the statistics from them
+    stats = linear_regression(X_data, y_data)
+    
+    stats1 = gaussian_regression(X_data, y_data)
+
+    stats2 = decision_tree_regression(X_data, y_data)
+    
+    stats3 = random_forest_regression(X_data, y_data)
+
+    #Make a list with all of the data collected by these models
+    final_stats = [stats, stats1, stats2, stats3]
+
+    #Create a dataframe of all of the data collected
+    stats_df = pd.DataFrame(final_stats)
+
+    #Change default row/column names in the dataframe
+    index = stats_df.index
+    columns = stats_df.columns
+    index_list = index.tolist()
+    column_list = columns.tolist()
+
+    #Label the rows as the corresponding regression function
+    index_list[0] = "Linear Regression"
+    index_list[1] = "Gaussian Regression"
+    index_list[2] = "Decision Tree Regression"
+    index_list[3] = "Random Forest Regression"
+    #Label the columns as the corresponding statistic
+    column_list[0] = "R2"
+    column_list[1] = "MSE"
+    column_list[2] = "MAE"
+    column_list[3] = "R Pearson"
+
+    #add these names to the final data frame
+    stats_df.index = index_list
+    stats_df.columns = column_list
+
+    #print the final results of the Regression Module!!
+    print(stats_df)
+    current_time = datetime.datetime.now()
+    formatted_time = current_time.strftime("%Y-%m-%d %H:%M:%S")
+    print(f"This program concluded at {formatted_time}")
+
+##################################################################################################
+
+def calculate_stats(y_test, y_pred):
+    """
+    Function to calculate general statistics that can be applied to each specific model
+    Notes: R2, MSE, and MAE calculated through sklearn module
+    R Pearson correlation coefficient calculated through numpy module
+
+    Parameters
+    ----------
+    y_test : The variable that is the true value of y in the dat aset
+    y_pred : The variable that the regression model predicted as the value of y in the data set
+
+    Returns
+    -------
+    stats : list of R2, MSE, MAE, and R Pearson correlation coefficient values for each specific regression model the function is used for
+
+    """
+    r2 = r2_score(y_test, y_pred)
+    mse = mean_squared_error(y_test, y_pred)
+    mae = mean_absolute_error(y_test, y_pred)
+    pearson = np.corrcoef(y_test, y_pred)[0, 1]
+    stats = [r2, mse, mae, pearson]
+    return stats
+
+##################################################################################################
+#Linear Regression Model
+
+#train/test split is consistantly 80/20 throughout this code
+#random state values are set to 42, unless optimized using GridSearchCV
+def linear_regression(X, y):
+    """
+    Implements a Linear Regression model on the inputted data
+
+    Returns
+    -------
+    calculate_stats(y_test, y_pred) : a list of four statistics (r2 value, mse value, mae value, and r pearson correlation 
+    coefficient value to the main function to be included in the final dataframe)
+
+    """
+    start_time = time.time()
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.2, random_state = 42)
+    
+    model = LinearRegression()
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+
+    #Graph Linear model's performance
+    plt.figure(dpi=1000)
+    plt.plot(y_test,y_pred,'o',alpha=0.4, color = "#c91a46") # plot the prediction
+    plt.xlabel('True Y Value', fontsize=12)
+    plt.ylabel('Predicted Y Value', fontsize=12)
+    plt.title('Linear Process Regression Model', fontsize=14)
+    plt.plot([min(y_test), max(y_test)], [min(y_test), max(y_test)], "k--")
+    plt.show()
+    
+    end_time = time.time()
+    
+    total_time = end_time - start_time
+    total_minutes = round((total_time/60), 3)
+    print(f"Linear model took {total_minutes} minutes to run.")
+    
+    #Calculate Statistics 
+    return calculate_stats(y_test, y_pred)
+    
+##################################################################################################
+#Gaussian Process Regression Model (Optimized)
+
+def gaussian_regression(X, y):
+    """
+    Implements a Gaussian Regression model with the inputted data
+
+    Returns
+    -------
+    calculate_stats(y_test, y_pred) : returns same list as Linear regression, except with the values achieved by the 
+    Gaussian model
+
+    """
+    start_time = time.time()
+    
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.2, random_state = 42)
+    
+    kernel = RBF(length_scale = 1.0) 
+    
+    #Create final Gaussian Process model 
+    gp = GaussianProcessRegressor(kernel = kernel, n_restarts_optimizer=10, random_state=42)
+    
+    gp.fit(X_train, y_train)  
+
+    #predict values with the test data set to assess Gaussian Model
+    y_pred, std = gp.predict(X_test, return_std=True) 
+    
+    #Graph Gaussian model's performance
+    plt.figure(dpi=1000)
+    plt.plot(y_test,y_pred,'o',alpha=0.4, color = "#32a852") # plot the prediction
+    plt.xlabel('True Y Value', fontsize=12)
+    plt.ylabel('Predicted Y Value', fontsize=12)
+    plt.title('Gaussian Process Regression Model', fontsize=14)
+    plt.plot([min(y_test), max(y_test)], [min(y_test), max(y_test)], "k--")
+    plt.show()
+    
+    end_time = time.time()
+    
+    total_time = end_time - start_time
+    total_minutes = round((total_time/60), 3)
+    print(f"Gaussian model took {total_minutes} minutes to run.")
+    
+    #Calculate Gaussian Statistics
+    return calculate_stats(y_test, y_pred)
+#################################################################################################
+#Decision Tree Model (Optimized)
+
+def decision_tree_regression(X, y):
+    """
+    Implements a Decision Tree regression model with the inputted data
+
+    Returns
+    -------
+    calculate_stats(y_test, y_pred) : list of statistics specific to the decision tree model's performance
+
+    """
+    
+    start_time = time.time()
+    
+    #Split the data into a training set and a test set
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.2, random_state = 42)
+    
+    tree1 = DecisionTreeRegressor()
+    tree1.fit(X_train,y_train)
+    
+    #Predict values from the X test set
+    y_pred=tree1.predict(X_test)
+
+    #Graph Decision Tree model's performance
+    plt.figure(dpi=1000)
+    plt.plot(y_test,y_pred,'o',alpha=0.4, color = "#fc9403") # plot the prediction
+    plt.xlabel('True Y Value', fontsize=12)
+    plt.ylabel('Predicted Y Value', fontsize=12)
+    plt.title('Decision Tree Regression Model', fontsize=14)
+    plt.plot([min(y_test), max(y_test)], [min(y_test), max(y_test)], "k--")
+    plt.show()
+
+    end_time = time.time()
+    
+    total_time = end_time - start_time
+    total_minutes = round((total_time/60), 3)
+    print(f"Decision Tree model took {total_minutes} minutes to run.")
+    
+    #Calculate Decision Tree Stats
+    return calculate_stats(y_test, y_pred)
+#################################################################################################
+#Random Forest Regression Model (Optimized)
+
+def random_forest_regression(X, y):
+    """
+    Implements a Random Forest regression model with the inputted data
+
+    Returns
+    -------
+    calculate_stats(y_test, y_pred): list of statistics specific to the random forest model's performance
+
+    """
+    
+    start_time = time.time()
+    
+      #Split the data into a training set and a test set
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.2, random_state = 5)
+    
+    #Code the final Random Forest model without optimized parameters
+    forest = RandomForestRegressor(n_estimators = 500, min_samples_leaf = 1, random_state = 5)
+    forest.fit(X_train, y_train)
+
+    #Predict test set data 
+    y_pred = forest.predict(X_test) 
+
+    #Graph Random Forest model's performance
+    plt.figure(dpi=1000)
+    plt.plot(y_test,y_pred,'o',alpha=0.4, color = "#4287f5") # plot the prediction
+    plt.xlabel('True Y Value', fontsize=12)
+    plt.ylabel('Predicted Y Value', fontsize=12)
+    plt.title('Random Forest Regression Model', fontsize=14)
+    plt.plot([min(y_test), max(y_test)], [min(y_test), max(y_test)], "k--")
+    plt.show()
+    
+    end_time = time.time()
+    total_time = end_time - start_time
+    total_minutes = round((total_time/60), 3)
+    print(f"Random Forest model took {total_minutes} minutes to run.")
+    
+    #Calculate Random Forest Stats
+    return calculate_stats(y_test, y_pred)
+#################################################################################################
+#Conclude program and call the main function
+if __name__ == "__main__":
+    main()
